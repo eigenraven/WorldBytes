@@ -29,6 +29,10 @@ spotless {
 	}
 }
 
+loom {
+	accessWidenerPath.set(file("src/main/resources/worldbytes.accesswidener"))
+}
+
 repositories {
 }
 
