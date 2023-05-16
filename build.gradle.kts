@@ -2,6 +2,7 @@ plugins {
 	id("fabric-loom") version "1.2-SNAPSHOT"
 	id("io.github.juuxel.loom-quiltflower") version "1.8.0"
 	id("com.diffplug.spotless") version "6.18.0"
+	id("me.champeau.jmh") version "0.7.1"
 	`maven-publish`
 }
 
@@ -44,6 +45,10 @@ dependencies {
 	// These are included in the Fabric API production distribution and allow you to update your mod to the latest modules at a later more convenient time.
 
 	// modImplementation "net.fabricmc.fabric-api:fabric-api-deprecated:${project.fabric_version}"
+
+	jmh("org.openjdk.jmh:jmh-core:1.36")
+	jmh("org.openjdk.jmh:jmh-generator-annprocess:1.36")
+	jmh("org.ow2.asm:asm:9.4")
 }
 
 base {
@@ -79,6 +84,21 @@ tasks.jar {
 	from("LICENSE") {
 		rename { "${it}_${base.archivesName.get()}"}
 	}
+}
+
+tasks.jmhJar {
+	exclude("oshi.properties", "oshi.architecture.properties")
+}
+
+jmh {
+	benchmarkMode.set(listOf("avgt"))
+	warmupIterations.set(2)
+	warmup.set("2s")
+	iterations.set(5)
+	timeOnIteration.set("2s")
+	timeUnit.set("ns")
+	fork.set(2)
+	zip64.set(true)
 }
 
 publishing {
