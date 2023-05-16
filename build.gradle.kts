@@ -53,6 +53,8 @@ dependencies {
 	jmh("org.openjdk.jmh:jmh-core:1.36")
 	jmh("org.openjdk.jmh:jmh-generator-annprocess:1.36")
 	jmh("org.ow2.asm:asm:9.4")
+
+	testImplementation("net.jqwik:jqwik:1.7.3")
 }
 
 base {
@@ -81,6 +83,20 @@ java {
 	toolchain {
 		languageVersion.set(JavaLanguageVersion.of(17))
 		vendor.set(JvmVendorSpec.AZUL)
+	}
+}
+
+testing {
+	suites {
+		val test by getting(JvmTestSuite::class) {
+			useJUnitJupiter("5.9.3")
+		}
+	}
+}
+
+tasks.test {
+	this.useJUnitPlatform {
+		includeEngines.add("jqwik")
 	}
 }
 

@@ -28,6 +28,7 @@ public final class DensityFunctionCompiler {
     private static final byte[] templateClassBytes;
 
     private static final Type tFunctionContext = Type.getType(DensityFunction.FunctionContext.class);
+    private static final boolean debugWrite = Boolean.getBoolean("worldbytes.debug.writeClasses");
 
     static {
         final Class<CompiledDensityFunctionTemplate> kTemplateClass = CompiledDensityFunctionTemplate.class;
@@ -97,7 +98,9 @@ public final class DensityFunctionCompiler {
         k.accept(kWriter);
         final byte[] kBytes = kWriter.toByteArray();
 
-        dumpClass(errorFilePath, kBytes);
+        if (debugWrite) {
+            dumpClass(errorFilePath, kBytes);
+        }
 
         final Class<? extends CompiledDensityFunction> klass;
         try {
