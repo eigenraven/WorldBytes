@@ -44,6 +44,16 @@ public class CDFTests {
     }
 
     @Property
+    public void testMinOfConstants(@ForAll double a, @ForAll double b) {
+        testCompiledEquivalency(DensityFunctions.min(DensityFunctions.constant(a), DensityFunctions.constant(b)));
+    }
+
+    @Property
+    public void testMaxOfConstants(@ForAll double a, @ForAll double b) {
+        testCompiledEquivalency(DensityFunctions.max(DensityFunctions.constant(a), DensityFunctions.constant(b)));
+    }
+
+    @Property
     public void testSumOfConstantsDoubled(@ForAll double a, @ForAll double b) {
         testCompiledEquivalency(DensityFunctions.add(
                 DensityFunctions.add(DensityFunctions.constant(a), DensityFunctions.constant(b)),
@@ -62,5 +72,19 @@ public class CDFTests {
         testCompiledEquivalency(DensityFunctions.mul(
                 DensityFunctions.add(DensityFunctions.constant(a), DensityFunctions.constant(b)),
                 DensityFunctions.add(DensityFunctions.constant(a), DensityFunctions.constant(b))));
+    }
+
+    @Property
+    public void testSumsOfConstantsMin(@ForAll double a, @ForAll double b) {
+        testCompiledEquivalency(DensityFunctions.min(
+                DensityFunctions.add(DensityFunctions.constant(a), DensityFunctions.constant(a)),
+                DensityFunctions.add(DensityFunctions.constant(b), DensityFunctions.constant(b))));
+    }
+
+    @Property
+    public void testSumsOfConstantsMax(@ForAll double a, @ForAll double b) {
+        testCompiledEquivalency(DensityFunctions.max(
+                DensityFunctions.add(DensityFunctions.constant(a), DensityFunctions.constant(a)),
+                DensityFunctions.add(DensityFunctions.constant(b), DensityFunctions.constant(b))));
     }
 }

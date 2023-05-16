@@ -47,11 +47,13 @@ public abstract class CompiledDensityFunction implements DensityFunction {
     }
 
     public void compiledFillArray(double[] vals, ContextProvider contextProvider) {
-        original.fillArray(vals, contextProvider);
+        for (int i = 0; i < vals.length; i++) {
+            vals[i] = this.compiledCompute(contextProvider.forIndex(i));
+        }
     }
 
     public DensityFunction compiledMapAll(Visitor visitor) {
-        return original.mapAll(visitor);
+        return DensityFunctionCompiler.compile(original.mapAll(visitor));
     }
 
     public double compiledMinValue() {

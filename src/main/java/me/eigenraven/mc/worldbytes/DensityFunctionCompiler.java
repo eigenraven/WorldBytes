@@ -210,8 +210,36 @@ public final class DensityFunctionCompiler {
 
                         m.visitVarInsn(DLOAD, a1);
                         m.visitInsn(DUP2_X2);
-                        m.visitInsn(POP2);
+                        m.visitInsn(POP2); // (a2, a1) -> (a1, a2)
                         m.visitInsn(DMUL); // a1 * a2
+                        m.visitVarInsn(DSTORE, a1); // overload a1 with the output value
+                        m.visitLabel(endFn);
+                        m.visitVarInsn(DLOAD, a1);
+                    }
+                    case MIN, MAX -> {
+                        final boolean isMin = df.type() == DensityFunctions.TwoArgumentSimpleFunction.Type.MIN;
+                        final double boundary = isMin
+                                ? df.argument2().minValue()
+                                : df.argument2().maxValue();
+                        final int a1 = currentVar;
+                        currentVar += 2;
+                        m.visitInsn(DUP2);
+                        m.visitVarInsn(DSTORE, a1);
+
+                        // if (a1 <> boundary) { a1 } else { Math.minmax(a1, a2) }
+                        m.visitLdcInsn(boundary);
+                        m.visitInsn(DCMPL);
+                        final Label endFn = new Label();
+                        m.visitJumpInsn(isMin ? IFLT : IFGT, endFn);
+                        // beyond boundary - short circuit (goto endFn)
+                        // not beyond boundary; compute a2 and the min/max
+                        visitCompute(df.argument2());
+
+                        m.visitVarInsn(DLOAD, a1);
+                        m.visitInsn(DUP2_X2);
+                        m.visitInsn(POP2); // (a2, a1) -> (a1, a2)
+                        m.visitMethodInsn(
+                                INVOKESTATIC, Type.getInternalName(Math.class), isMin ? "min" : "max", "(DD)D", false);
                         m.visitVarInsn(DSTORE, a1); // overload a1 with the output value
                         m.visitLabel(endFn);
                         m.visitVarInsn(DLOAD, a1);
