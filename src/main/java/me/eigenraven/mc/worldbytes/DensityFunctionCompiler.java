@@ -1,5 +1,7 @@
 package me.eigenraven.mc.worldbytes;
 
+import static org.objectweb.asm.Opcodes.*;
+
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.FileSystems;
@@ -12,6 +14,7 @@ import org.apache.commons.io.IOUtils;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.MethodNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,6 +43,7 @@ public final class DensityFunctionCompiler {
             return df;
         }
         final long classIndex = classCounter.incrementAndGet();
+        final String errorFilePath = "CompiledDensityFunction$" + classIndex + ".class";
 
         final ClassNode k = new ClassNode();
         {
@@ -49,24 +53,46 @@ public final class DensityFunctionCompiler {
 
         k.name += "$" + classIndex;
 
+        // min value
+        {
+            MethodNode m = k.methods.stream()
+                    .filter(mn -> mn.name.equals("compiledMinValue"))
+                    .findFirst()
+                    .orElseThrow();
+            m.instructions.clear();
+            m.visitCode();
+            m.visitLdcInsn(df.minValue());
+            m.visitInsn(DRETURN);
+            m.visitMaxs(0, 0);
+            m.visitEnd();
+        }
+        // max value
+        {
+            MethodNode m = k.methods.stream()
+                    .filter(mn -> mn.name.equals("compiledMaxValue"))
+                    .findFirst()
+                    .orElseThrow();
+            m.instructions.clear();
+            m.visitCode();
+            m.visitLdcInsn(df.maxValue());
+            m.visitInsn(DRETURN);
+            m.visitMaxs(0, 0);
+            m.visitEnd();
+        }
+
         final ClassWriter kWriter = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
         k.accept(kWriter);
         final byte[] kBytes = kWriter.toByteArray();
+
+        dumpClass(errorFilePath, kBytes);
 
         final Class<? extends CompiledDensityFunction> klass;
         try {
             klass = (Class<? extends CompiledDensityFunction>)
                     MethodHandles.lookup().defineClass(kBytes);
         } catch (Throwable e) {
-            final String errorFilePath = "CompiledDensityFunction$" + classIndex + ".class";
             logger.error("Could not load generated class bytes: ", e);
-            final Path errorPath = FileSystems.getDefault().getPath(errorFilePath);
-            logger.error("Attempting to save failed class to {}", errorPath.toAbsolutePath());
-            try {
-                Files.write(errorPath, kBytes);
-            } catch (IOException ex) {
-                logger.error("Could not save failed class", ex);
-            }
+            dumpClass(errorFilePath, kBytes);
             throw new RuntimeException(e);
         }
         logger.debug("Compiled and loaded {}", klass.getName());
@@ -79,5 +105,15 @@ public final class DensityFunctionCompiler {
         }
 
         return instance;
+    }
+
+    private static void dumpClass(String fileName, byte[] kBytes) {
+        final Path filePath = FileSystems.getDefault().getPath(fileName);
+        logger.error("Attempting to save class to {}", filePath.toAbsolutePath());
+        try {
+            Files.write(filePath, kBytes);
+        } catch (IOException ex) {
+            logger.error("Could not save failed class", ex);
+        }
     }
 }
