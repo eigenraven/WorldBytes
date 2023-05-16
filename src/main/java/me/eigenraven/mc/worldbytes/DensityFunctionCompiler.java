@@ -3,6 +3,7 @@ package me.eigenraven.mc.worldbytes;
 import static org.objectweb.asm.Opcodes.*;
 
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.lang.invoke.MethodHandles;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -14,9 +15,11 @@ import net.minecraft.world.level.levelgen.DensityFunctions;
 import org.apache.commons.io.IOUtils;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Label;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.util.CheckClassAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -109,6 +112,13 @@ public final class DensityFunctionCompiler {
         } catch (Throwable e) {
             logger.error("Could not load generated class bytes: ", e);
             dumpClass(errorFilePath, kBytes);
+            if (e instanceof VerifyError) {
+                CheckClassAdapter.verify(
+                        new ClassReader(kBytes),
+                        DensityFunctionCompiler.class.getClassLoader(),
+                        true,
+                        new PrintWriter(System.err));
+            }
             throw new RuntimeException(e);
         }
         logger.debug("Compiled and loaded {}", klass.getName());
@@ -168,6 +178,43 @@ public final class DensityFunctionCompiler {
                     }
                     case MUL -> {
                         m.visitInsn(DMUL);
+                    }
+                    default -> throw new IllegalStateException(df.type().getSerializedName());
+                }
+            } else if (gdf instanceof DensityFunctions.Ap2 df) {
+                visitCompute(df.argument1());
+                switch (df.type()) {
+                    case ADD -> {
+                        visitCompute(df.argument2());
+                        m.visitInsn(DADD);
+                    }
+                    case MUL -> {
+                        final int a1 = currentVar;
+                        currentVar += 2;
+                        m.visitInsn(DUP2);
+                        m.visitVarInsn(DSTORE, a1);
+
+                        // if (a1 == 0) { 0 } else { a1 * a2 }
+                        m.visitInsn(DCONST_0);
+                        m.visitInsn(DCMPL);
+                        final Label ifNotZero = new Label();
+                        final Label endFn = new Label();
+                        m.visitJumpInsn(IFNE, ifNotZero);
+                        // equal 0
+                        m.visitInsn(DCONST_0);
+                        m.visitVarInsn(DSTORE, a1); // overload a1 with the output value
+                        m.visitJumpInsn(GOTO, endFn);
+                        // not equal 0
+                        m.visitLabel(ifNotZero);
+                        visitCompute(df.argument2());
+
+                        m.visitVarInsn(DLOAD, a1);
+                        m.visitInsn(DUP2_X2);
+                        m.visitInsn(POP2);
+                        m.visitInsn(DMUL); // a1 * a2
+                        m.visitVarInsn(DSTORE, a1); // overload a1 with the output value
+                        m.visitLabel(endFn);
+                        m.visitVarInsn(DLOAD, a1);
                     }
                     default -> throw new IllegalStateException(df.type().getSerializedName());
                 }

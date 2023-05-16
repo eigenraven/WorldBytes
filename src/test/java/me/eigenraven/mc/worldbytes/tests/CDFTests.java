@@ -23,10 +23,44 @@ public class CDFTests {
         }
     }
 
-    @Property
-    public void testConstant(@ForAll double value) {
-        final DensityFunction vanilla = DensityFunctions.constant(value);
+    private void testCompiledEquivalency(final DensityFunction vanilla) {
         final DensityFunction compiled = DensityFunctionCompiler.compile(vanilla);
         assertEquals(vanilla.compute(null), compiled.compute(null));
+    }
+
+    @Property
+    public void testConstant(@ForAll double value) {
+        testCompiledEquivalency(DensityFunctions.constant(value));
+    }
+
+    @Property
+    public void testSumOfConstants(@ForAll double a, @ForAll double b) {
+        testCompiledEquivalency(DensityFunctions.add(DensityFunctions.constant(a), DensityFunctions.constant(b)));
+    }
+
+    @Property
+    public void testMulOfConstants(@ForAll double a, @ForAll double b) {
+        testCompiledEquivalency(DensityFunctions.mul(DensityFunctions.constant(a), DensityFunctions.constant(b)));
+    }
+
+    @Property
+    public void testSumOfConstantsDoubled(@ForAll double a, @ForAll double b) {
+        testCompiledEquivalency(DensityFunctions.add(
+                DensityFunctions.add(DensityFunctions.constant(a), DensityFunctions.constant(b)),
+                DensityFunctions.add(DensityFunctions.constant(a), DensityFunctions.constant(b))));
+    }
+
+    @Property
+    public void testMulOfConstantsDoubled(@ForAll double a, @ForAll double b) {
+        testCompiledEquivalency(DensityFunctions.add(
+                DensityFunctions.mul(DensityFunctions.constant(a), DensityFunctions.constant(b)),
+                DensityFunctions.mul(DensityFunctions.constant(a), DensityFunctions.constant(b))));
+    }
+
+    @Property
+    public void testSumOfConstantsMulled(@ForAll double a, @ForAll double b) {
+        testCompiledEquivalency(DensityFunctions.mul(
+                DensityFunctions.add(DensityFunctions.constant(a), DensityFunctions.constant(b)),
+                DensityFunctions.add(DensityFunctions.constant(a), DensityFunctions.constant(b))));
     }
 }

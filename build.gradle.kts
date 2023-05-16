@@ -4,6 +4,7 @@ plugins {
 	id("com.diffplug.spotless") version "6.18.0"
 	id("me.champeau.jmh") version "0.7.1"
 	`maven-publish`
+	jacoco
 }
 
 // Access gradle properties
@@ -98,7 +99,13 @@ tasks.test {
 	this.useJUnitPlatform {
 		includeEngines.add("jqwik")
 	}
+	finalizedBy(tasks.jacocoTestReport)
 }
+tasks.jacocoTestReport {
+	dependsOn(tasks.test) // tests are required to run before generating the report
+}
+
+
 
 tasks.jar {
 	from("LICENSE") {
