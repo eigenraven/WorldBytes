@@ -285,6 +285,59 @@ public final class DensityFunctionCompiler {
                 m.visitLdcInsn(df.minValue());
                 m.visitLdcInsn(df.maxValue());
                 m.visitMethodInsn(INVOKESTATIC, tUtils.getInternalName(), "clamp", "(DDD)D", false);
+            } else if (gdf instanceof DensityFunctions.HolderHolder df) {
+                visitCompute(df.function().value());
+            } else if (gdf instanceof DensityFunctions.Mapped df) {
+                visitCompute(df.input());
+                switch (df.type()) {
+                    case ABS -> {
+                        m.visitMethodInsn(INVOKESTATIC, Type.getInternalName(Math.class), "abs", "(D)D", false);
+                    }
+                    case SQUARE -> {
+                        m.visitInsn(DUP2);
+                        m.visitInsn(DMUL);
+                    }
+                    case CUBE -> {
+                        m.visitInsn(DUP2);
+                        m.visitInsn(DUP2);
+                        m.visitInsn(DMUL);
+                        m.visitInsn(DMUL);
+                    }
+                    case HALF_NEGATIVE, QUARTER_NEGATIVE -> {
+                        m.visitInsn(DUP2);
+                        m.visitInsn(DCONST_0);
+                        m.visitInsn(DCMPG);
+                        final Label gtZero = new Label();
+                        final Label ifEnd = new Label();
+                        m.visitJumpInsn(IFGT, gtZero);
+                        // If <= 0
+                        m.visitLdcInsn(
+                                switch (df.type()) {
+                                    case HALF_NEGATIVE -> 0.5D;
+                                    case QUARTER_NEGATIVE -> 0.25D;
+                                    default -> throw new IllegalStateException();
+                                });
+                        m.visitInsn(DMUL);
+                        // If > 0, no-op
+                        m.visitLabel(gtZero);
+                    }
+                    case SQUEEZE -> {
+                        m.visitLdcInsn(-1.0);
+                        m.visitLdcInsn(1.0);
+                        m.visitMethodInsn(INVOKESTATIC, tUtils.getInternalName(), "clamp", "(DDD)D", false);
+                        // e
+                        m.visitLdcInsn(2.0D);
+                        m.visitInsn(DDIV); // e / 2.0
+                        m.visitInsn(DUP2); // (e/2, e/2)
+                        m.visitInsn(DUP2);
+                        m.visitInsn(DUP2);
+                        m.visitInsn(DMUL);
+                        m.visitInsn(DMUL); // (e/2, e*e*e/8)
+                        m.visitLdcInsn(3.0);
+                        m.visitInsn(DDIV); // (e/2, e*e*e/24)
+                        m.visitInsn(DSUB); // e/2 - e*e*e/24
+                    }
+                }
             } else {
                 // Fallback to calling a stored object, these functions are really complex
                 final int index = storedDfs.size();

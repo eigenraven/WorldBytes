@@ -7,6 +7,7 @@ import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.minecraft.CrashReport;
 import net.minecraft.SharedConstants;
+import net.minecraft.core.Holder;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.DensityFunctions;
@@ -53,6 +54,12 @@ public class CDFTests {
     @Property
     public void testSumOfConstants(@ForAll double a, @ForAll double b) {
         testCompiledEquivalency(DensityFunctions.add(DensityFunctions.constant(a), DensityFunctions.constant(b)));
+    }
+
+    @Property
+    public void testSumOfConstantsHolder(@ForAll double a, @ForAll double b) {
+        testCompiledEquivalency(new DensityFunctions.HolderHolder(
+                Holder.direct(DensityFunctions.add(DensityFunctions.constant(a), DensityFunctions.constant(b)))));
     }
 
     @Property
@@ -121,6 +128,11 @@ public class CDFTests {
     @Property
     public void testEndIslands(@ForAll long v) {
         testCompiledEquivalency(DensityFunctions.endIslands(v));
+    }
+
+    @Property
+    public void testConstantMapped(@ForAll double value, @ForAll DensityFunctions.Mapped.Type type) {
+        testCompiledEquivalency(DensityFunctions.map(DensityFunctions.constant(value), type));
     }
 
     @Property
