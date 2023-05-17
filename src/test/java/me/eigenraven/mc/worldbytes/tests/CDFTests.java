@@ -2,6 +2,7 @@ package me.eigenraven.mc.worldbytes.tests;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import me.eigenraven.mc.worldbytes.CompiledDensityFunction;
 import me.eigenraven.mc.worldbytes.DensityFunctionCompiler;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
@@ -133,6 +134,25 @@ public class CDFTests {
     @Property
     public void testConstantMapped(@ForAll double value, @ForAll DensityFunctions.Mapped.Type type) {
         testCompiledEquivalency(DensityFunctions.map(DensityFunctions.constant(value), type));
+    }
+
+    @Property
+    public void testConstantMappedMarked(@ForAll double value, @ForAll DensityFunctions.Mapped.Type type) {
+        final DensityFunction fn =
+                DensityFunctions.interpolated(DensityFunctions.map(DensityFunctions.constant(value), type));
+        testCompiledEquivalency(fn);
+        final DensityFunction cfn = DensityFunctionCompiler.compile(fn);
+        assertInstanceOf(DensityFunctions.Marker.class, cfn);
+        assertInstanceOf(CompiledDensityFunction.class, ((DensityFunctions.Marker) cfn).wrapped());
+    }
+
+    @Property
+    public void testConstantMarkedMapped(@ForAll double value, @ForAll DensityFunctions.Mapped.Type type) {
+        final DensityFunction fn =
+                DensityFunctions.map(DensityFunctions.interpolated(DensityFunctions.constant(value)), type);
+        testCompiledEquivalency(fn);
+        final DensityFunction cfn = DensityFunctionCompiler.compile(fn);
+        assertInstanceOf(CompiledDensityFunction.class, cfn);
     }
 
     @Property

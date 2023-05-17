@@ -62,6 +62,16 @@ public final class DensityFunctionCompiler {
                 || df instanceof DensityFunctions.BlendOffset) {
             return df;
         }
+        if (df instanceof DensityFunctions.Marker marker) {
+            final DensityFunction compiled = compile(marker.wrapped());
+            return switch (marker.type()) {
+                case Interpolated -> DensityFunctions.interpolated(compiled);
+                case FlatCache -> DensityFunctions.flatCache(compiled);
+                case Cache2D -> DensityFunctions.cache2d(compiled);
+                case CacheOnce -> DensityFunctions.cacheOnce(compiled);
+                case CacheAllInCell -> DensityFunctions.cacheAllInCell(compiled);
+            };
+        }
         final long classIndex = classCounter.incrementAndGet();
         final String errorFilePath = "CompiledDensityFunction$" + classIndex + ".class";
 
@@ -338,6 +348,8 @@ public final class DensityFunctionCompiler {
                         m.visitInsn(DSUB); // e/2 - e*e*e/24
                     }
                 }
+            } else if (gdf instanceof DensityFunctions.Marker df) {
+                visitCompute(df.wrapped());
             } else {
                 // Fallback to calling a stored object, these functions are really complex
                 final int index = storedDfs.size();
