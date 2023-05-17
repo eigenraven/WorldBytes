@@ -13,6 +13,23 @@ import net.minecraft.world.level.levelgen.DensityFunctions;
 
 public class CDFTests {
 
+    private static final DensityFunction.FunctionContext dummyContext = new DensityFunction.FunctionContext() {
+        @Override
+        public int blockX() {
+            return 13;
+        }
+
+        @Override
+        public int blockY() {
+            return 10;
+        }
+
+        @Override
+        public int blockZ() {
+            return 17;
+        }
+    };
+
     static {
         synchronized (Bootstrap.class) {
             SharedConstants.tryDetectVersion();
@@ -25,7 +42,7 @@ public class CDFTests {
 
     private void testCompiledEquivalency(final DensityFunction vanilla) {
         final DensityFunction compiled = DensityFunctionCompiler.compile(vanilla);
-        assertEquals(vanilla.compute(null), compiled.compute(null));
+        assertEquals(vanilla.compute(dummyContext), compiled.compute(dummyContext));
     }
 
     @Property
@@ -51,6 +68,49 @@ public class CDFTests {
     @Property
     public void testMaxOfConstants(@ForAll double a, @ForAll double b) {
         testCompiledEquivalency(DensityFunctions.max(DensityFunctions.constant(a), DensityFunctions.constant(b)));
+    }
+
+    @Property
+    public void testBeardifierMarker() {
+        testCompiledEquivalency(DensityFunctions.BeardifierMarker.INSTANCE);
+    }
+
+    @Property
+    public void testBlendAlpha() {
+        testCompiledEquivalency(DensityFunctions.blendAlpha());
+    }
+
+    @Property
+    public void testBlendOffset() {
+        testCompiledEquivalency(DensityFunctions.blendOffset());
+    }
+
+    @Property
+    public void testBeardifierMarker2() {
+        testCompiledEquivalency(DensityFunctions.add(
+                DensityFunctions.BeardifierMarker.INSTANCE, DensityFunctions.BeardifierMarker.INSTANCE));
+    }
+
+    @Property
+    public void testBlendAlpha2() {
+        testCompiledEquivalency(DensityFunctions.add(DensityFunctions.blendAlpha(), DensityFunctions.blendAlpha()));
+    }
+
+    @Property
+    public void testBlendOffset2() {
+        testCompiledEquivalency(DensityFunctions.add(DensityFunctions.blendOffset(), DensityFunctions.blendOffset()));
+    }
+
+    @Property
+    public void testBlendDensityOfConstant(@ForAll double v) {
+        testCompiledEquivalency(DensityFunctions.blendDensity(DensityFunctions.constant(v)));
+    }
+
+    @Property
+    public void testBlendDensityOfConstant2(@ForAll double v) {
+        testCompiledEquivalency(DensityFunctions.add(
+                DensityFunctions.blendDensity(DensityFunctions.constant(v)),
+                DensityFunctions.blendDensity(DensityFunctions.constant(v))));
     }
 
     @Property

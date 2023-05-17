@@ -30,7 +30,10 @@ public final class DensityFunctionCompiler {
     public static final AtomicLong classCounter = new AtomicLong(1);
     private static final byte[] templateClassBytes;
 
+    private static final Type tUtils = Type.getType(DensityFunctionUtils.class);
     private static final Type tFunctionContext = Type.getType(DensityFunction.FunctionContext.class);
+    private static final Type tBlendDensityMethod =
+            Type.getMethodType(Type.DOUBLE_TYPE, Type.DOUBLE_TYPE, tFunctionContext);
     private static final boolean debugWrite = Boolean.getBoolean("worldbytes.debug.writeClasses");
 
     static {
@@ -47,7 +50,10 @@ public final class DensityFunctionCompiler {
 
     @SuppressWarnings("unchecked")
     public static DensityFunction compile(DensityFunction df) {
-        if (df instanceof CompiledDensityFunction) {
+        if (df instanceof CompiledDensityFunction
+                || df instanceof DensityFunctions.BeardifierMarker
+                || df instanceof DensityFunctions.BlendAlpha
+                || df instanceof DensityFunctions.BlendOffset) {
             return df;
         }
         final long classIndex = classCounter.incrementAndGet();
@@ -246,6 +252,21 @@ public final class DensityFunctionCompiler {
                     }
                     default -> throw new IllegalStateException(df.type().getSerializedName());
                 }
+            } else if (gdf instanceof DensityFunctions.BeardifierMarker) {
+                m.visitInsn(DCONST_0);
+            } else if (gdf instanceof DensityFunctions.BlendAlpha) {
+                m.visitInsn(DCONST_1);
+            } else if (gdf instanceof DensityFunctions.BlendDensity df) {
+                visitCompute(df.input());
+                m.visitVarInsn(ALOAD, 1);
+                m.visitMethodInsn(
+                        INVOKESTATIC,
+                        tUtils.getInternalName(),
+                        "blendDensity",
+                        tBlendDensityMethod.getDescriptor(),
+                        false);
+            } else if (gdf instanceof DensityFunctions.BlendOffset) {
+                m.visitInsn(DCONST_0);
             } else {
                 throw new UnsupportedOperationException(
                         "Unknown density function type " + gdf.getClass() + " : " + gdf.codec());
