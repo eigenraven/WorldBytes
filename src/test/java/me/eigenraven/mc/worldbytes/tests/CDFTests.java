@@ -119,6 +119,16 @@ public class CDFTests {
     }
 
     @Property
+    public void testEndIslands(@ForAll long v) {
+        testCompiledEquivalency(DensityFunctions.endIslands(v));
+    }
+
+    @Property
+    public void testBlendDensityOfEndIslands(@ForAll long v) {
+        testCompiledEquivalency(DensityFunctions.blendDensity(DensityFunctions.endIslands(v)));
+    }
+
+    @Property
     public void testSumOfConstantsDoubled(@ForAll double a, @ForAll double b) {
         testCompiledEquivalency(DensityFunctions.add(
                 DensityFunctions.add(DensityFunctions.constant(a), DensityFunctions.constant(b)),

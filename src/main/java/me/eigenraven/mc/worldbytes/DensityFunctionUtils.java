@@ -15,4 +15,8 @@ public final class DensityFunctionUtils {
     public static double clamp(double val, double min, double max) {
         return Mth.clamp(val, min, max);
     }
+
+    public static double compute(DensityFunction df, DensityFunction.FunctionContext fctx) {
+        return df.compute(fctx);
+    }
 }

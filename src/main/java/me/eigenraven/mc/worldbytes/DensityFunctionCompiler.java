@@ -8,6 +8,8 @@ import java.lang.invoke.MethodHandles;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
 import net.minecraft.world.level.levelgen.DensityFunction;
@@ -31,7 +33,11 @@ public final class DensityFunctionCompiler {
     private static final byte[] templateClassBytes;
 
     private static final Type tUtils = Type.getType(DensityFunctionUtils.class);
+    private static final Type tDF = Type.getType(DensityFunction.class);
+    private static final Type tDFArr = Type.getType(DensityFunction[].class);
+    private static final Type tCDF = Type.getType(CompiledDensityFunction.class);
     private static final Type tFunctionContext = Type.getType(DensityFunction.FunctionContext.class);
+    private static final Type tComputeMethod = Type.getMethodType(Type.DOUBLE_TYPE, tDF, tFunctionContext);
     private static final Type tBlendDensityMethod =
             Type.getMethodType(Type.DOUBLE_TYPE, Type.DOUBLE_TYPE, tFunctionContext);
     private static final boolean debugWrite = Boolean.getBoolean("worldbytes.debug.writeClasses");
@@ -93,6 +99,7 @@ public final class DensityFunctionCompiler {
             m.visitMaxs(0, 0);
             m.visitEnd();
         }
+        final List<DensityFunction> storedDfs = new ArrayList<>();
         // compute
         {
             MethodNode m = k.methods.stream()
@@ -100,7 +107,7 @@ public final class DensityFunctionCompiler {
                     .findFirst()
                     .orElseThrow();
             m.instructions.clear();
-            populateCompute(df, m);
+            populateCompute(df, k, m, storedDfs);
         }
 
         final ClassWriter kWriter = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
@@ -131,7 +138,8 @@ public final class DensityFunctionCompiler {
 
         final CompiledDensityFunction instance;
         try {
-            instance = klass.getConstructor(DensityFunction.class).newInstance(df);
+            instance = klass.getConstructor(DensityFunction.class, DensityFunction[].class)
+                    .newInstance(df, storedDfs.toArray(new DensityFunction[0]));
         } catch (ReflectiveOperationException e) {
             throw new RuntimeException(e);
         }
@@ -139,9 +147,10 @@ public final class DensityFunctionCompiler {
         return instance;
     }
 
-    private static void populateCompute(DensityFunction df, MethodNode m) {
+    private static void populateCompute(
+            DensityFunction df, ClassNode kls, MethodNode m, List<DensityFunction> storedDfs) {
         m.visitCode();
-        final Context ctx = new Context(m, 2);
+        final Context ctx = new Context(kls, m, storedDfs, 2);
         ctx.visitCompute(df);
         m.visitInsn(DRETURN);
         m.visitMaxs(0, 0);
@@ -159,11 +168,15 @@ public final class DensityFunctionCompiler {
     }
 
     private static class Context {
+        private final ClassNode kls;
         private final MethodNode m;
+        private final List<DensityFunction> storedDfs;
         private int currentVar;
 
-        Context(MethodNode m, int currentVar) {
+        Context(ClassNode kls, MethodNode m, List<DensityFunction> storedDfs, int currentVar) {
+            this.kls = kls;
             this.m = m;
+            this.storedDfs = storedDfs;
             this.currentVar = currentVar;
         }
 
@@ -273,8 +286,21 @@ public final class DensityFunctionCompiler {
                 m.visitLdcInsn(df.maxValue());
                 m.visitMethodInsn(INVOKESTATIC, tUtils.getInternalName(), "clamp", "(DDD)D", false);
             } else {
-                throw new UnsupportedOperationException(
-                        "Unknown density function type " + gdf.getClass() + " : " + gdf.codec());
+                // Fallback to calling a stored object, these functions are really complex
+                final int index = storedDfs.size();
+                storedDfs.add(gdf);
+                m.visitVarInsn(ALOAD, 0);
+                m.visitFieldInsn(GETFIELD, tCDF.getInternalName(), "functions", tDFArr.getDescriptor());
+                m.visitLdcInsn(index);
+                m.visitInsn(AALOAD);
+                m.visitVarInsn(ALOAD, 1);
+                m.visitMethodInsn(
+                        INVOKESTATIC, tUtils.getInternalName(), "compute", tComputeMethod.getDescriptor(), false);
+                if (!(gdf instanceof DensityFunctions.EndIslandDensityFunction)) {
+                    // TODO: Make this non-fatal once all vanilla functions are implemented
+                    throw new UnsupportedOperationException(
+                            "Unknown density function type " + gdf.getClass() + " : " + gdf.codec());
+                }
             }
         }
     }
