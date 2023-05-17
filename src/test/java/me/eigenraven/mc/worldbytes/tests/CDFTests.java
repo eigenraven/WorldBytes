@@ -71,6 +71,11 @@ public class CDFTests {
     }
 
     @Property
+    public void testClampOfConstants(@ForAll double a, @ForAll double min, @ForAll double max) {
+        testCompiledEquivalency(DensityFunctions.constant(a).clamp(min, max));
+    }
+
+    @Property
     public void testBeardifierMarker() {
         testCompiledEquivalency(DensityFunctions.BeardifierMarker.INSTANCE);
     }
@@ -146,5 +151,11 @@ public class CDFTests {
         testCompiledEquivalency(DensityFunctions.max(
                 DensityFunctions.add(DensityFunctions.constant(a), DensityFunctions.constant(a)),
                 DensityFunctions.add(DensityFunctions.constant(b), DensityFunctions.constant(b))));
+    }
+
+    @Property
+    public void testSumsOfConstantsClamp(@ForAll double a, @ForAll double min, @ForAll double max) {
+        testCompiledEquivalency(DensityFunctions.add(DensityFunctions.constant(a), DensityFunctions.constant(a))
+                .clamp(min, max));
     }
 }

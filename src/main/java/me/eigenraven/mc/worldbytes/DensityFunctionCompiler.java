@@ -267,6 +267,11 @@ public final class DensityFunctionCompiler {
                         false);
             } else if (gdf instanceof DensityFunctions.BlendOffset) {
                 m.visitInsn(DCONST_0);
+            } else if (gdf instanceof DensityFunctions.Clamp df) {
+                visitCompute(df.input());
+                m.visitLdcInsn(df.minValue());
+                m.visitLdcInsn(df.maxValue());
+                m.visitMethodInsn(INVOKESTATIC, tUtils.getInternalName(), "clamp", "(DDD)D", false);
             } else {
                 throw new UnsupportedOperationException(
                         "Unknown density function type " + gdf.getClass() + " : " + gdf.codec());
