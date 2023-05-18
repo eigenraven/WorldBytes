@@ -350,6 +350,28 @@ public final class DensityFunctionCompiler {
                 }
             } else if (gdf instanceof DensityFunctions.Marker df) {
                 visitCompute(df.wrapped());
+            } else if (gdf instanceof DensityFunctions.RangeChoice df) {
+                visitCompute(df.input());
+                m.visitInsn(DUP2);
+
+                final Label outOfRange = new Label(), endIf = new Label();
+                m.visitLdcInsn(df.minInclusive());
+                m.visitInsn(DCMPG);
+                m.visitJumpInsn(IFLT, outOfRange); // if d<this.minInclusive
+                m.visitInsn(DUP2); // keep a consistent stack size of the oor branch
+                m.visitLdcInsn(df.maxExclusive());
+                m.visitInsn(DCMPL);
+                m.visitJumpInsn(IFGE, outOfRange);
+                m.visitInsn(POP2);
+                // in range
+                visitCompute(df.whenInRange());
+                m.visitJumpInsn(GOTO, endIf);
+
+                m.visitLabel(outOfRange);
+                m.visitInsn(POP2); // remove the duplicated input value
+                visitCompute(df.whenOutOfRange());
+
+                m.visitLabel(endIf);
             } else {
                 // Fallback to calling a stored object, these functions are really complex
                 final int index = storedDfs.size();
@@ -361,7 +383,8 @@ public final class DensityFunctionCompiler {
                 m.visitVarInsn(ALOAD, 1);
                 m.visitMethodInsn(
                         INVOKESTATIC, tUtils.getInternalName(), "compute", tComputeMethod.getDescriptor(), false);
-                if (!(gdf instanceof DensityFunctions.EndIslandDensityFunction)) {
+                if (!(gdf instanceof DensityFunctions.EndIslandDensityFunction
+                        || gdf instanceof DensityFunctions.Noise)) {
                     // TODO: Make this non-fatal once all vanilla functions are implemented
                     throw new UnsupportedOperationException(
                             "Unknown density function type " + gdf.getClass() + " : " + gdf.codec());

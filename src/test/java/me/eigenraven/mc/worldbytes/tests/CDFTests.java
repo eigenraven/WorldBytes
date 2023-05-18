@@ -12,6 +12,7 @@ import net.minecraft.core.Holder;
 import net.minecraft.server.Bootstrap;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.DensityFunctions;
+import net.minecraft.world.level.levelgen.synth.NormalNoise;
 
 public class CDFTests {
 
@@ -161,10 +162,31 @@ public class CDFTests {
     }
 
     @Property
+    public void testBlendDensityOfNoise(@ForAll double amplitude) {
+        testCompiledEquivalency(DensityFunctions.blendDensity(DensityFunctions.noise(
+                Holder.direct(new NormalNoise.NoiseParameters(1, amplitude, 0.5 * amplitude, 0.2 * amplitude)))));
+    }
+
+    @Property
     public void testSumOfConstantsDoubled(@ForAll double a, @ForAll double b) {
         testCompiledEquivalency(DensityFunctions.add(
                 DensityFunctions.add(DensityFunctions.constant(a), DensityFunctions.constant(b)),
                 DensityFunctions.add(DensityFunctions.constant(a), DensityFunctions.constant(b))));
+    }
+
+    @Property
+    public void testChoiceOfConstants(
+            @ForAll double choice,
+            @ForAll double min,
+            @ForAll double max,
+            @ForAll double ifTrue,
+            @ForAll double ifFalse) {
+        testCompiledEquivalency(DensityFunctions.rangeChoice(
+                DensityFunctions.constant(choice),
+                min,
+                max,
+                DensityFunctions.constant(ifTrue),
+                DensityFunctions.constant(ifFalse)));
     }
 
     @Property
