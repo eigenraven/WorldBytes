@@ -3,8 +3,9 @@ package me.eigenraven.mc.worldbytes;
 import net.minecraft.world.level.levelgen.DensityFunction;
 
 public class CompiledDensityFunctionTemplate extends CompiledDensityFunction {
-    public CompiledDensityFunctionTemplate(DensityFunction original, DensityFunction[] functions) {
-        super(original, functions);
+    public CompiledDensityFunctionTemplate(
+            DensityFunction original, DensityFunction[] functions, NoiseHolder[] noises) {
+        super(original, functions, noises);
     }
 
     @Override

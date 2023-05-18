@@ -36,8 +36,13 @@ public final class DensityFunctionCompiler {
     private static final Type tDF = Type.getType(DensityFunction.class);
     private static final Type tDFArr = Type.getType(DensityFunction[].class);
     private static final Type tCDF = Type.getType(CompiledDensityFunction.class);
+    private static final Type tNoiseHolder = Type.getType(DensityFunction.NoiseHolder.class);
+    private static final Type tNoiseHolderArr = Type.getType(DensityFunction.NoiseHolder[].class);
     private static final Type tFunctionContext = Type.getType(DensityFunction.FunctionContext.class);
     private static final Type tComputeMethod = Type.getMethodType(Type.DOUBLE_TYPE, tDF, tFunctionContext);
+    private static final Type tGetFctxCoordAsDoubleMethod = Type.getMethodType(Type.DOUBLE_TYPE, tFunctionContext);
+    private static final Type tGetNoiseValueMethod =
+            Type.getMethodType(Type.DOUBLE_TYPE, tNoiseHolder, Type.DOUBLE_TYPE, Type.DOUBLE_TYPE, Type.DOUBLE_TYPE);
     private static final Type tBlendDensityMethod =
             Type.getMethodType(Type.DOUBLE_TYPE, Type.DOUBLE_TYPE, tFunctionContext);
     private static final boolean debugWrite = Boolean.getBoolean("worldbytes.debug.writeClasses");
@@ -110,6 +115,7 @@ public final class DensityFunctionCompiler {
             m.visitEnd();
         }
         final List<DensityFunction> storedDfs = new ArrayList<>();
+        final List<DensityFunction.NoiseHolder> storedNoises = new ArrayList<>();
         // compute
         {
             MethodNode m = k.methods.stream()
@@ -117,7 +123,7 @@ public final class DensityFunctionCompiler {
                     .findFirst()
                     .orElseThrow();
             m.instructions.clear();
-            populateCompute(df, k, m, storedDfs);
+            populateCompute(df, k, m, storedDfs, storedNoises);
         }
 
         final ClassWriter kWriter = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
@@ -148,8 +154,12 @@ public final class DensityFunctionCompiler {
 
         final CompiledDensityFunction instance;
         try {
-            instance = klass.getConstructor(DensityFunction.class, DensityFunction[].class)
-                    .newInstance(df, storedDfs.toArray(new DensityFunction[0]));
+            instance = klass.getConstructor(
+                            DensityFunction.class, DensityFunction[].class, DensityFunction.NoiseHolder[].class)
+                    .newInstance(
+                            df,
+                            storedDfs.toArray(new DensityFunction[0]),
+                            storedNoises.toArray(new DensityFunction.NoiseHolder[0]));
         } catch (ReflectiveOperationException e) {
             throw new RuntimeException(e);
         }
@@ -158,9 +168,13 @@ public final class DensityFunctionCompiler {
     }
 
     private static void populateCompute(
-            DensityFunction df, ClassNode kls, MethodNode m, List<DensityFunction> storedDfs) {
+            DensityFunction df,
+            ClassNode kls,
+            MethodNode m,
+            List<DensityFunction> storedDfs,
+            List<DensityFunction.NoiseHolder> storedNoises) {
         m.visitCode();
-        final Context ctx = new Context(kls, m, storedDfs, 2);
+        final Context ctx = new Context(kls, m, storedDfs, storedNoises, 2);
         ctx.visitCompute(df);
         m.visitInsn(DRETURN);
         m.visitMaxs(0, 0);
@@ -181,12 +195,19 @@ public final class DensityFunctionCompiler {
         private final ClassNode kls;
         private final MethodNode m;
         private final List<DensityFunction> storedDfs;
+        private final List<DensityFunction.NoiseHolder> storedNoises;
         private int currentVar;
 
-        Context(ClassNode kls, MethodNode m, List<DensityFunction> storedDfs, int currentVar) {
+        Context(
+                ClassNode kls,
+                MethodNode m,
+                List<DensityFunction> storedDfs,
+                List<DensityFunction.NoiseHolder> storedNoises,
+                int currentVar) {
             this.kls = kls;
             this.m = m;
             this.storedDfs = storedDfs;
+            this.storedNoises = storedNoises;
             this.currentVar = currentVar;
         }
 
@@ -372,6 +393,79 @@ public final class DensityFunctionCompiler {
                 visitCompute(df.whenOutOfRange());
 
                 m.visitLabel(endIf);
+            } else if (gdf instanceof DensityFunctions.ShiftedNoise df) {
+                final int vX = currentVar;
+                final int vY = currentVar + 2;
+                final int vZ = currentVar + 4;
+                final int noiseIdx = storedNoises.size();
+                storedNoises.add(df.noise());
+                currentVar += 6;
+
+                visitCompute(df.shiftX());
+                m.visitVarInsn(ALOAD, 1); // context
+                m.visitMethodInsn(
+                        INVOKESTATIC,
+                        tUtils.getInternalName(),
+                        "getFctxXAsDouble",
+                        tGetFctxCoordAsDoubleMethod.getDescriptor(),
+                        false);
+                m.visitLdcInsn(df.xzScale());
+                m.visitInsn(DMUL);
+                m.visitInsn(DADD);
+                m.visitVarInsn(DSTORE, vX);
+
+                visitCompute(df.shiftY());
+                m.visitVarInsn(ALOAD, 1); // context
+                m.visitMethodInsn(
+                        INVOKESTATIC,
+                        tUtils.getInternalName(),
+                        "getFctxYAsDouble",
+                        tGetFctxCoordAsDoubleMethod.getDescriptor(),
+                        false);
+                m.visitLdcInsn(df.yScale());
+                m.visitInsn(DMUL);
+                m.visitInsn(DADD);
+                m.visitVarInsn(DSTORE, vY);
+
+                visitCompute(df.shiftZ());
+                m.visitVarInsn(ALOAD, 1); // context
+                m.visitMethodInsn(
+                        INVOKESTATIC,
+                        tUtils.getInternalName(),
+                        "getFctxZAsDouble",
+                        tGetFctxCoordAsDoubleMethod.getDescriptor(),
+                        false);
+                m.visitLdcInsn(df.xzScale());
+                m.visitInsn(DMUL);
+                m.visitInsn(DADD);
+                m.visitVarInsn(DSTORE, vZ);
+
+                m.visitVarInsn(ALOAD, 0);
+                m.visitFieldInsn(GETFIELD, tCDF.getInternalName(), "noises", tNoiseHolderArr.getDescriptor());
+                m.visitLdcInsn(noiseIdx);
+                m.visitInsn(AALOAD);
+                m.visitVarInsn(DLOAD, vX);
+                m.visitVarInsn(DLOAD, vY);
+                m.visitVarInsn(DLOAD, vZ);
+                m.visitMethodInsn(
+                        INVOKESTATIC,
+                        tUtils.getInternalName(),
+                        "getNoiseValue",
+                        tGetNoiseValueMethod.getDescriptor(),
+                        false);
+            } else if (gdf instanceof DensityFunctions.YClampedGradient df) {
+                m.visitVarInsn(ALOAD, 1); // context
+                m.visitMethodInsn(
+                        INVOKESTATIC,
+                        tUtils.getInternalName(),
+                        "getFctxYAsDouble",
+                        tGetFctxCoordAsDoubleMethod.getDescriptor(),
+                        false);
+                m.visitLdcInsn((double) df.fromY());
+                m.visitLdcInsn((double) df.toY());
+                m.visitLdcInsn(df.fromValue());
+                m.visitLdcInsn(df.toValue());
+                m.visitMethodInsn(INVOKESTATIC, tUtils.getInternalName(), "clampedMap", "(DDDDD)D", false);
             } else {
                 // Fallback to calling a stored object, these functions are really complex
                 final int index = storedDfs.size();
@@ -384,7 +478,12 @@ public final class DensityFunctionCompiler {
                 m.visitMethodInsn(
                         INVOKESTATIC, tUtils.getInternalName(), "compute", tComputeMethod.getDescriptor(), false);
                 if (!(gdf instanceof DensityFunctions.EndIslandDensityFunction
-                        || gdf instanceof DensityFunctions.Noise)) {
+                        || gdf instanceof DensityFunctions.Noise
+                        || gdf instanceof DensityFunctions.ShiftNoise // Covers Shift, ShiftA and ShiftB
+                        || gdf instanceof DensityFunctions.Spline
+                        || gdf instanceof DensityFunctions.WeirdScaledSampler
+                        || gdf instanceof DensityFunctions.Spline)) {
+
                     // TODO: Make this non-fatal once all vanilla functions are implemented
                     throw new UnsupportedOperationException(
                             "Unknown density function type " + gdf.getClass() + " : " + gdf.codec());

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import me.eigenraven.mc.worldbytes.CompiledDensityFunction;
 import me.eigenraven.mc.worldbytes.DensityFunctionCompiler;
+import net.jqwik.api.Example;
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
 import net.minecraft.CrashReport;
@@ -84,33 +85,33 @@ public class CDFTests {
         testCompiledEquivalency(DensityFunctions.constant(a).clamp(min, max));
     }
 
-    @Property
+    @Example
     public void testBeardifierMarker() {
         testCompiledEquivalency(DensityFunctions.BeardifierMarker.INSTANCE);
     }
 
-    @Property
+    @Example
     public void testBlendAlpha() {
         testCompiledEquivalency(DensityFunctions.blendAlpha());
     }
 
-    @Property
+    @Example
     public void testBlendOffset() {
         testCompiledEquivalency(DensityFunctions.blendOffset());
     }
 
-    @Property
+    @Example
     public void testBeardifierMarker2() {
         testCompiledEquivalency(DensityFunctions.add(
                 DensityFunctions.BeardifierMarker.INSTANCE, DensityFunctions.BeardifierMarker.INSTANCE));
     }
 
-    @Property
+    @Example
     public void testBlendAlpha2() {
         testCompiledEquivalency(DensityFunctions.add(DensityFunctions.blendAlpha(), DensityFunctions.blendAlpha()));
     }
 
-    @Property
+    @Example
     public void testBlendOffset2() {
         testCompiledEquivalency(DensityFunctions.add(DensityFunctions.blendOffset(), DensityFunctions.blendOffset()));
     }
@@ -162,9 +163,43 @@ public class CDFTests {
     }
 
     @Property
-    public void testBlendDensityOfNoise(@ForAll double amplitude) {
-        testCompiledEquivalency(DensityFunctions.blendDensity(DensityFunctions.noise(
-                Holder.direct(new NormalNoise.NoiseParameters(1, amplitude, 0.5 * amplitude, 0.2 * amplitude)))));
+    public void testNoise(@ForAll double amplitude) {
+        testCompiledEquivalency(DensityFunctions.noise(
+                Holder.direct(new NormalNoise.NoiseParameters(1, amplitude, 0.5 * amplitude, 0.2 * amplitude))));
+    }
+
+    @Property
+    public void testShiftNoise(@ForAll double amplitude) {
+        testCompiledEquivalency(DensityFunctions.shift(
+                Holder.direct(new NormalNoise.NoiseParameters(1, amplitude, 0.5 * amplitude, 0.2 * amplitude))));
+    }
+
+    @Property
+    public void testShiftANoise(@ForAll double amplitude) {
+        testCompiledEquivalency(DensityFunctions.shiftA(
+                Holder.direct(new NormalNoise.NoiseParameters(1, amplitude, 0.5 * amplitude, 0.2 * amplitude))));
+    }
+
+    @Property
+    public void testShiftBNoise(@ForAll double amplitude) {
+        testCompiledEquivalency(DensityFunctions.shiftB(
+                Holder.direct(new NormalNoise.NoiseParameters(1, amplitude, 0.5 * amplitude, 0.2 * amplitude))));
+    }
+
+    @Property(tries = 4000)
+    public void testShiftedNoise2D(
+            @ForAll double amplitude, @ForAll double shiftX, @ForAll double shiftZ, @ForAll double xzScale) {
+        testCompiledEquivalency(DensityFunctions.shiftedNoise2d(
+                DensityFunctions.constant(shiftX),
+                DensityFunctions.constant(shiftZ),
+                xzScale,
+                Holder.direct(new NormalNoise.NoiseParameters(1, amplitude, 0.5 * amplitude, 0.2 * amplitude))));
+    }
+
+    @Property(tries = 4000)
+    public void testYClampedGradient(
+            @ForAll int fromY, @ForAll int toY, @ForAll double fromValue, @ForAll double toValue) {
+        testCompiledEquivalency(DensityFunctions.yClampedGradient(fromY, toY, fromValue, toValue));
     }
 
     @Property
@@ -174,7 +209,7 @@ public class CDFTests {
                 DensityFunctions.add(DensityFunctions.constant(a), DensityFunctions.constant(b))));
     }
 
-    @Property
+    @Property(tries = 4000)
     public void testChoiceOfConstants(
             @ForAll double choice,
             @ForAll double min,

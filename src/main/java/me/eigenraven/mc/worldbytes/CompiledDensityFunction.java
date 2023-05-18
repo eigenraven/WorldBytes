@@ -6,10 +6,13 @@ import net.minecraft.world.level.levelgen.DensityFunction;
 // Use mapping-independent method names to simplify the ASM class generation
 public abstract class CompiledDensityFunction implements DensityFunction {
     public final DensityFunction[] functions;
+    public final NoiseHolder[] noises;
 
-    public CompiledDensityFunction(final DensityFunction original, final DensityFunction[] functions) {
+    public CompiledDensityFunction(
+            final DensityFunction original, final DensityFunction[] functions, NoiseHolder[] noises) {
         this.original = original;
         this.functions = functions;
+        this.noises = noises;
     }
 
     public final DensityFunction original;
