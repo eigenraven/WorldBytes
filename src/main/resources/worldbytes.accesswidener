@@ -27,3 +27,14 @@ accessible class net/minecraft/world/level/levelgen/DensityFunctions$Transformer
 accessible class net/minecraft/world/level/levelgen/DensityFunctions$TwoArgumentSimpleFunction
 accessible class net/minecraft/world/level/levelgen/DensityFunctions$WeirdScaledSampler
 accessible class net/minecraft/world/level/levelgen/DensityFunctions$YClampedGradient
+
+accessible class net/minecraft/world/level/levelgen/NoiseChunk$BlendAlpha
+accessible class net/minecraft/world/level/levelgen/NoiseChunk$BlendOffset
+accessible class net/minecraft/world/level/levelgen/NoiseChunk$Cache2D
+accessible class net/minecraft/world/level/levelgen/NoiseChunk$CacheAllInCell
+accessible class net/minecraft/world/level/levelgen/NoiseChunk$CacheOnce
+accessible class net/minecraft/world/level/levelgen/NoiseChunk$FlatCache
+accessible class net/minecraft/world/level/levelgen/NoiseChunk$NoiseChunkDensityFunction
+accessible class net/minecraft/world/level/levelgen/NoiseChunk$NoiseInterpolator
+
+accessible method net/minecraft/world/level/levelgen/OreVeinifier create (Lnet/minecraft/world/level/levelgen/DensityFunction;Lnet/minecraft/world/level/levelgen/DensityFunction;Lnet/minecraft/world/level/levelgen/DensityFunction;Lnet/minecraft/world/level/levelgen/PositionalRandomFactory;)Lnet/minecraft/world/level/levelgen/NoiseChunk$BlockStateFiller;

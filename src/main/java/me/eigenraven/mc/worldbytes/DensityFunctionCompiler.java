@@ -11,9 +11,13 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import net.minecraft.core.Holder;
+import net.minecraft.util.CubicSpline;
 import net.minecraft.world.level.levelgen.DensityFunction;
 import net.minecraft.world.level.levelgen.DensityFunctions;
+import net.minecraft.world.level.levelgen.NoiseRouter;
 import org.apache.commons.io.IOUtils;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassWriter;
@@ -59,14 +63,92 @@ public final class DensityFunctionCompiler {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    public static DensityFunction compile(DensityFunction df) {
-        if (df instanceof CompiledDensityFunction
-                || df instanceof DensityFunctions.BeardifierMarker
+    private static final ConcurrentHashMap<DensityFunction, DensityFunction> compilationCache =
+            new ConcurrentHashMap<>();
+
+    static final AtomicLong reusedCalls = new AtomicLong();
+    static final AtomicLong totalCalls = new AtomicLong();
+
+    private static boolean shouldKeepFunctionType(DensityFunction df) {
+        return df instanceof CompiledDensityFunction
+                || df instanceof DensityFunctions.BeardifierOrMarker
                 || df instanceof DensityFunctions.BlendAlpha
-                || df instanceof DensityFunctions.BlendOffset) {
+                || df instanceof DensityFunctions.BlendOffset;
+    }
+
+    public static NoiseRouter compileNoiseRouter(NoiseRouter raw) {
+        return new NoiseRouter(
+                DensityFunctionCompiler.compile(raw.barrierNoise()),
+                DensityFunctionCompiler.compile(raw.fluidLevelFloodednessNoise()),
+                DensityFunctionCompiler.compile(raw.fluidLevelSpreadNoise()),
+                DensityFunctionCompiler.compile(raw.lavaNoise()),
+                DensityFunctionCompiler.compile(raw.temperature()),
+                DensityFunctionCompiler.compile(raw.vegetation()),
+                DensityFunctionCompiler.compile(raw.continents()),
+                DensityFunctionCompiler.compile(raw.erosion()),
+                DensityFunctionCompiler.compile(raw.depth()),
+                DensityFunctionCompiler.compile(raw.ridges()),
+                DensityFunctionCompiler.compile(raw.initialDensityWithoutJaggedness()),
+                DensityFunctionCompiler.compile(raw.finalDensity()),
+                DensityFunctionCompiler.compile(raw.veinToggle()),
+                DensityFunctionCompiler.compile(raw.veinRidged()),
+                DensityFunctionCompiler.compile(raw.veinGap()));
+    }
+
+    public static DensityFunction compile(DensityFunction df) {
+        if (shouldKeepFunctionType(df)) {
             return df;
         }
+        boolean reused = true;
+        DensityFunction compiled = compilationCache.get(df);
+        if (compiled == null) {
+            reused = false;
+            // not found, compile and put
+            // don't use computeIfAbsent because we may recursively enter this function again from the compiler
+            compiled = compileFresh(df);
+            compilationCache.put(df, compiled);
+        }
+        long total = totalCalls.incrementAndGet();
+        long tReused;
+        if (reused) {
+            tReused = reusedCalls.incrementAndGet();
+        } else {
+            tReused = reusedCalls.get();
+        }
+        /* TODO: Make toggleable in settings
+        if ((total % 100) == 0) {
+            System.err.printf("Compiler cache hits %.2f %8d/%8d\n", (double) tReused / total, tReused, total);
+        }
+         */
+        return compiled;
+    }
+
+    private static CubicSpline<DensityFunctions.Spline.Point, DensityFunctions.Spline.Coordinate> compileSpline(
+            CubicSpline<DensityFunctions.Spline.Point, DensityFunctions.Spline.Coordinate> spline) {
+        if (spline
+                instanceof
+                CubicSpline.Multipoint<DensityFunctions.Spline.Point, DensityFunctions.Spline.Coordinate>
+                mp) {
+            final DensityFunction rawCoord = mp.coordinate().function().value();
+            final DensityFunction compiledCoord = compile(rawCoord);
+            final List<CubicSpline<DensityFunctions.Spline.Point, DensityFunctions.Spline.Coordinate>> values =
+                    mp.values().stream()
+                            .map(DensityFunctionCompiler::compileSpline)
+                            .toList();
+            return new CubicSpline.Multipoint<>(
+                    new DensityFunctions.Spline.Coordinate(Holder.direct(compiledCoord)),
+                    mp.locations(),
+                    values,
+                    mp.derivatives(),
+                    mp.minValue(),
+                    mp.maxValue());
+        } else {
+            return spline;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static DensityFunction compileFresh(DensityFunction df) {
         if (df instanceof DensityFunctions.Marker marker) {
             final DensityFunction compiled = compile(marker.wrapped());
             return switch (marker.type()) {
@@ -76,6 +158,18 @@ public final class DensityFunctionCompiler {
                 case CacheOnce -> DensityFunctions.cacheOnce(compiled);
                 case CacheAllInCell -> DensityFunctions.cacheAllInCell(compiled);
             };
+        } else if (df instanceof DensityFunctions.Spline splineFn) {
+            final CubicSpline<DensityFunctions.Spline.Point, DensityFunctions.Spline.Coordinate> rawSpline =
+                    splineFn.spline();
+            final CubicSpline<DensityFunctions.Spline.Point, DensityFunctions.Spline.Coordinate> compiledSpline =
+                    compileSpline(rawSpline);
+            if (rawSpline != compiledSpline) {
+                return DensityFunctions.spline(compiledSpline);
+            } else {
+                return df;
+            }
+        } else if (shouldKeepFunctionType(df)) {
+            return df;
         }
         final long classIndex = classCounter.incrementAndGet();
         final String errorFilePath = "CompiledDensityFunction$" + classIndex + ".class";
@@ -88,6 +182,19 @@ public final class DensityFunctionCompiler {
 
         k.name += "$" + classIndex;
 
+        // index
+        {
+            MethodNode m = k.methods.stream()
+                    .filter(mn -> mn.name.equals("functionIndex"))
+                    .findFirst()
+                    .orElseThrow();
+            m.instructions.clear();
+            m.visitCode();
+            m.visitLdcInsn(classIndex);
+            m.visitInsn(LRETURN);
+            m.visitMaxs(0, 0);
+            m.visitEnd();
+        }
         // min value
         {
             MethodNode m = k.methods.stream()
@@ -296,10 +403,6 @@ public final class DensityFunctionCompiler {
                     }
                     default -> throw new IllegalStateException(df.type().getSerializedName());
                 }
-            } else if (gdf instanceof DensityFunctions.BeardifierMarker) {
-                m.visitInsn(DCONST_0);
-            } else if (gdf instanceof DensityFunctions.BlendAlpha) {
-                m.visitInsn(DCONST_1);
             } else if (gdf instanceof DensityFunctions.BlendDensity df) {
                 visitCompute(df.input());
                 m.visitVarInsn(ALOAD, 1);
@@ -309,8 +412,6 @@ public final class DensityFunctionCompiler {
                         "blendDensity",
                         tBlendDensityMethod.getDescriptor(),
                         false);
-            } else if (gdf instanceof DensityFunctions.BlendOffset) {
-                m.visitInsn(DCONST_0);
             } else if (gdf instanceof DensityFunctions.Clamp df) {
                 visitCompute(df.input());
                 m.visitLdcInsn(df.minValue());
@@ -369,8 +470,6 @@ public final class DensityFunctionCompiler {
                         m.visitInsn(DSUB); // e/2 - e*e*e/24
                     }
                 }
-            } else if (gdf instanceof DensityFunctions.Marker df) {
-                visitCompute(df.wrapped());
             } else if (gdf instanceof DensityFunctions.RangeChoice df) {
                 visitCompute(df.input());
                 m.visitInsn(DUP2);
@@ -393,6 +492,60 @@ public final class DensityFunctionCompiler {
                 visitCompute(df.whenOutOfRange());
 
                 m.visitLabel(endIf);
+            } else if (gdf instanceof DensityFunctions.Noise df) {
+                final int vX = currentVar;
+                final int vY = currentVar + 2;
+                final int vZ = currentVar + 4;
+                final int noiseIdx = storedNoises.size();
+                storedNoises.add(df.noise());
+                currentVar += 6;
+
+                m.visitVarInsn(ALOAD, 1); // context
+                m.visitMethodInsn(
+                        INVOKESTATIC,
+                        tUtils.getInternalName(),
+                        "getFctxXAsDouble",
+                        tGetFctxCoordAsDoubleMethod.getDescriptor(),
+                        false);
+                m.visitLdcInsn(df.xzScale());
+                m.visitInsn(DMUL);
+                m.visitVarInsn(DSTORE, vX);
+
+                m.visitVarInsn(ALOAD, 1); // context
+                m.visitMethodInsn(
+                        INVOKESTATIC,
+                        tUtils.getInternalName(),
+                        "getFctxYAsDouble",
+                        tGetFctxCoordAsDoubleMethod.getDescriptor(),
+                        false);
+                m.visitLdcInsn(df.yScale());
+                m.visitInsn(DMUL);
+                m.visitVarInsn(DSTORE, vY);
+
+                m.visitVarInsn(ALOAD, 1); // context
+                m.visitMethodInsn(
+                        INVOKESTATIC,
+                        tUtils.getInternalName(),
+                        "getFctxZAsDouble",
+                        tGetFctxCoordAsDoubleMethod.getDescriptor(),
+                        false);
+                m.visitLdcInsn(df.xzScale());
+                m.visitInsn(DMUL);
+                m.visitVarInsn(DSTORE, vZ);
+
+                m.visitVarInsn(ALOAD, 0);
+                m.visitFieldInsn(GETFIELD, tCDF.getInternalName(), "noises", tNoiseHolderArr.getDescriptor());
+                m.visitLdcInsn(noiseIdx);
+                m.visitInsn(AALOAD);
+                m.visitVarInsn(DLOAD, vX);
+                m.visitVarInsn(DLOAD, vY);
+                m.visitVarInsn(DLOAD, vZ);
+                m.visitMethodInsn(
+                        INVOKESTATIC,
+                        tUtils.getInternalName(),
+                        "getNoiseValue",
+                        tGetNoiseValueMethod.getDescriptor(),
+                        false);
             } else if (gdf instanceof DensityFunctions.ShiftedNoise df) {
                 final int vX = currentVar;
                 final int vY = currentVar + 2;
@@ -467,6 +620,9 @@ public final class DensityFunctionCompiler {
                 m.visitLdcInsn(df.toValue());
                 m.visitMethodInsn(INVOKESTATIC, tUtils.getInternalName(), "clampedMap", "(DDDDD)D", false);
             } else {
+                if (gdf instanceof DensityFunctions.Marker || gdf instanceof DensityFunctions.Spline) {
+                    gdf = compile(gdf);
+                }
                 // Fallback to calling a stored object, these functions are really complex
                 final int index = storedDfs.size();
                 storedDfs.add(gdf);
@@ -477,17 +633,6 @@ public final class DensityFunctionCompiler {
                 m.visitVarInsn(ALOAD, 1);
                 m.visitMethodInsn(
                         INVOKESTATIC, tUtils.getInternalName(), "compute", tComputeMethod.getDescriptor(), false);
-                if (!(gdf instanceof DensityFunctions.EndIslandDensityFunction
-                        || gdf instanceof DensityFunctions.Noise
-                        || gdf instanceof DensityFunctions.ShiftNoise // Covers Shift, ShiftA and ShiftB
-                        || gdf instanceof DensityFunctions.Spline
-                        || gdf instanceof DensityFunctions.WeirdScaledSampler
-                        || gdf instanceof DensityFunctions.Spline)) {
-
-                    // TODO: Make this non-fatal once all vanilla functions are implemented
-                    throw new UnsupportedOperationException(
-                            "Unknown density function type " + gdf.getClass() + " : " + gdf.codec());
-                }
             }
         }
     }

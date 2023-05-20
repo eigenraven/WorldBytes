@@ -9,6 +9,11 @@ public class CompiledDensityFunctionTemplate extends CompiledDensityFunction {
     }
 
     @Override
+    public long functionIndex() {
+        return super.functionIndex();
+    }
+
+    @Override
     public double compiledCompute(FunctionContext context) {
         return super.compiledCompute(context);
     }
