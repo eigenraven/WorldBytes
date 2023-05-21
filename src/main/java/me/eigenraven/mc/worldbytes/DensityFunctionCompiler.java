@@ -115,11 +115,11 @@ public final class DensityFunctionCompiler {
         } else {
             tReused = reusedCalls.get();
         }
-        /* TODO: Make toggleable in settings
+        // TODO: Make toggleable in settings
         if ((total % 100) == 0) {
-            System.err.printf("Compiler cache hits %.2f %8d/%8d\n", (double) tReused / total, tReused, total);
+            logger.info("DF Compiler cache hits {} {}/{}", (double) tReused / total, tReused, total);
         }
-         */
+
         return compiled;
     }
 

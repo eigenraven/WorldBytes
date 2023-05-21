@@ -4,16 +4,7 @@
   "package": "me.eigenraven.mc.worldbytes.mixin",
   "compatibilityLevel": "JAVA_17",
   "mixins": [
-    "RandomStateMixin",
-    "hashcodes.BlendedNoiseMixin",
-    "hashcodes.Cache2DMixin",
-    "hashcodes.CacheOnceMixin",
-    "hashcodes.CubicSplineMixin",
-    "hashcodes.FlatCacheMixin",
-    "hashcodes.ImprovedNoiseMixin",
-    "hashcodes.NoiseInterpolatorMixin",
-    "hashcodes.NormalNoiseMixin",
-    "hashcodes.PerlinNoiseMixin"
+    "RandomStateMixin"
   ],
   "client": [
   ],
