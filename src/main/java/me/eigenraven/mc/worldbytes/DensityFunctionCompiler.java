@@ -24,12 +24,15 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Label;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.util.CheckClassAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public final class DensityFunctionCompiler {
+    private static class TooSimpleException extends RuntimeException {}
+
     private DensityFunctionCompiler() {}
 
     private static final Logger logger = LoggerFactory.getLogger("worldbytes-DFC");
@@ -181,6 +184,9 @@ public final class DensityFunctionCompiler {
         }
 
         k.name += "$" + classIndex;
+        if (k.fields == null) {
+            k.fields = new ArrayList<>();
+        }
 
         // index
         {
@@ -230,7 +236,11 @@ public final class DensityFunctionCompiler {
                     .findFirst()
                     .orElseThrow();
             m.instructions.clear();
-            populateCompute(df, k, m, storedDfs, storedNoises);
+            try {
+                populateCompute(df, k, m, storedDfs, storedNoises);
+            } catch (TooSimpleException e) {
+                return df;
+            }
         }
 
         final ClassWriter kWriter = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
@@ -283,6 +293,10 @@ public final class DensityFunctionCompiler {
         m.visitCode();
         final Context ctx = new Context(kls, m, storedDfs, storedNoises, 2);
         ctx.visitCompute(df);
+        if (ctx.comprisedOps < 4) {
+            throw new TooSimpleException();
+        }
+        ctx.finish();
         m.visitInsn(DRETURN);
         m.visitMaxs(0, 0);
         m.visitEnd();
@@ -301,9 +315,11 @@ public final class DensityFunctionCompiler {
     private static class Context {
         private final ClassNode kls;
         private final MethodNode m;
+        private final MethodNode ctor;
         private final List<DensityFunction> storedDfs;
         private final List<DensityFunction.NoiseHolder> storedNoises;
         private int currentVar;
+        public int comprisedOps = 0;
 
         Context(
                 ClassNode kls,
@@ -316,6 +332,69 @@ public final class DensityFunctionCompiler {
             this.storedDfs = storedDfs;
             this.storedNoises = storedNoises;
             this.currentVar = currentVar;
+            this.ctor = kls.methods.stream()
+                    .filter(mn -> mn.name.equals("<init>"))
+                    .findFirst()
+                    .orElseThrow();
+
+            while (this.ctor.instructions.getLast().getOpcode() != RETURN) {
+                this.ctor.instructions.remove(this.ctor.instructions.getLast());
+            }
+            this.ctor.instructions.remove(this.ctor.instructions.getLast());
+        }
+
+        private String addStoredDensityFunction(DensityFunction df) {
+            for (int i = 0; i < storedDfs.size(); i++) {
+                if (storedDfs.get(i) == df) {
+                    return "storedDf" + i;
+                }
+            }
+            final int idx = storedDfs.size();
+            storedDfs.add(df);
+            final String fieldName = "storedDf" + idx;
+
+            kls.fields.add(new FieldNode(
+                    ACC_PUBLIC | ACC_FINAL, fieldName, Type.getDescriptor(DensityFunction.class), null, null));
+
+            ctor.visitVarInsn(ALOAD, 0);
+            ctor.visitVarInsn(ALOAD, 2); // load functions[]
+            ctor.visitLdcInsn(idx);
+            ctor.visitInsn(AALOAD);
+            ctor.visitFieldInsn(PUTFIELD, kls.name, fieldName, Type.getDescriptor(DensityFunction.class));
+
+            return fieldName;
+        }
+
+        private String addStoredNoise(DensityFunction.NoiseHolder nh) {
+            for (int i = 0; i < storedNoises.size(); i++) {
+                if (storedNoises.get(i) == nh) {
+                    return "storedNoise" + i;
+                }
+            }
+            final int idx = storedNoises.size();
+            storedNoises.add(nh);
+            final String fieldName = "storedNoise" + idx;
+
+            kls.fields.add(new FieldNode(
+                    ACC_PUBLIC | ACC_FINAL,
+                    fieldName,
+                    Type.getDescriptor(DensityFunction.NoiseHolder.class),
+                    null,
+                    null));
+
+            ctor.visitVarInsn(ALOAD, 0);
+            ctor.visitVarInsn(ALOAD, 3); // load noises[]
+            ctor.visitLdcInsn(idx);
+            ctor.visitInsn(AALOAD);
+            ctor.visitFieldInsn(PUTFIELD, kls.name, fieldName, Type.getDescriptor(DensityFunction.NoiseHolder.class));
+
+            return fieldName;
+        }
+
+        public void finish() {
+            ctor.visitInsn(RETURN);
+            ctor.visitMaxs(0, 0);
+            ctor.visitEnd();
         }
 
         /**
@@ -323,6 +402,7 @@ public final class DensityFunctionCompiler {
          * @param gdf The density function to recursively translate
          */
         public void visitCompute(DensityFunction gdf) {
+            comprisedOps++;
             if (gdf instanceof DensityFunctions.Constant df) {
                 m.visitLdcInsn(df.value());
             } else if (gdf instanceof DensityFunctions.MulOrAdd df) {
@@ -496,8 +576,6 @@ public final class DensityFunctionCompiler {
                 final int vX = currentVar;
                 final int vY = currentVar + 2;
                 final int vZ = currentVar + 4;
-                final int noiseIdx = storedNoises.size();
-                storedNoises.add(df.noise());
                 currentVar += 6;
 
                 m.visitVarInsn(ALOAD, 1); // context
@@ -533,10 +611,10 @@ public final class DensityFunctionCompiler {
                 m.visitInsn(DMUL);
                 m.visitVarInsn(DSTORE, vZ);
 
+                final String storedField = addStoredNoise(df.noise());
                 m.visitVarInsn(ALOAD, 0);
-                m.visitFieldInsn(GETFIELD, tCDF.getInternalName(), "noises", tNoiseHolderArr.getDescriptor());
-                m.visitLdcInsn(noiseIdx);
-                m.visitInsn(AALOAD);
+                m.visitFieldInsn(
+                        GETFIELD, kls.name, storedField, Type.getDescriptor(DensityFunction.NoiseHolder.class));
                 m.visitVarInsn(DLOAD, vX);
                 m.visitVarInsn(DLOAD, vY);
                 m.visitVarInsn(DLOAD, vZ);
@@ -550,8 +628,6 @@ public final class DensityFunctionCompiler {
                 final int vX = currentVar;
                 final int vY = currentVar + 2;
                 final int vZ = currentVar + 4;
-                final int noiseIdx = storedNoises.size();
-                storedNoises.add(df.noise());
                 currentVar += 6;
 
                 visitCompute(df.shiftX());
@@ -593,10 +669,10 @@ public final class DensityFunctionCompiler {
                 m.visitInsn(DADD);
                 m.visitVarInsn(DSTORE, vZ);
 
+                final String storedField = addStoredNoise(df.noise());
                 m.visitVarInsn(ALOAD, 0);
-                m.visitFieldInsn(GETFIELD, tCDF.getInternalName(), "noises", tNoiseHolderArr.getDescriptor());
-                m.visitLdcInsn(noiseIdx);
-                m.visitInsn(AALOAD);
+                m.visitFieldInsn(
+                        GETFIELD, kls.name, storedField, Type.getDescriptor(DensityFunction.NoiseHolder.class));
                 m.visitVarInsn(DLOAD, vX);
                 m.visitVarInsn(DLOAD, vY);
                 m.visitVarInsn(DLOAD, vZ);
@@ -624,12 +700,9 @@ public final class DensityFunctionCompiler {
                     gdf = compile(gdf);
                 }
                 // Fallback to calling a stored object, these functions are really complex
-                final int index = storedDfs.size();
-                storedDfs.add(gdf);
+                final String storedField = addStoredDensityFunction(gdf);
                 m.visitVarInsn(ALOAD, 0);
-                m.visitFieldInsn(GETFIELD, tCDF.getInternalName(), "functions", tDFArr.getDescriptor());
-                m.visitLdcInsn(index);
-                m.visitInsn(AALOAD);
+                m.visitFieldInsn(GETFIELD, kls.name, storedField, Type.getDescriptor(DensityFunction.class));
                 m.visitVarInsn(ALOAD, 1);
                 m.visitMethodInsn(
                         INVOKESTATIC, tUtils.getInternalName(), "compute", tComputeMethod.getDescriptor(), false);

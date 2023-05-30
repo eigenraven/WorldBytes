@@ -2,7 +2,6 @@ package me.eigenraven.mc.worldbytes.tests;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import me.eigenraven.mc.worldbytes.CompiledDensityFunction;
 import me.eigenraven.mc.worldbytes.DensityFunctionCompiler;
 import net.jqwik.api.Example;
 import net.jqwik.api.ForAll;
@@ -145,7 +144,6 @@ public class CDFTests {
         testCompiledEquivalency(fn);
         final DensityFunction cfn = DensityFunctionCompiler.compile(fn);
         assertInstanceOf(DensityFunctions.Marker.class, cfn);
-        assertInstanceOf(CompiledDensityFunction.class, ((DensityFunctions.Marker) cfn).wrapped());
     }
 
     @Property
@@ -154,7 +152,6 @@ public class CDFTests {
                 DensityFunctions.map(DensityFunctions.interpolated(DensityFunctions.constant(value)), type);
         testCompiledEquivalency(fn);
         final DensityFunction cfn = DensityFunctionCompiler.compile(fn);
-        assertInstanceOf(CompiledDensityFunction.class, cfn);
     }
 
     @Property
